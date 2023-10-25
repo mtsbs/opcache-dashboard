@@ -19,8 +19,11 @@ $config = opcache_get_configuration();
 $status = opcache_get_status();
 
 /**
- * Turn bytes into a human readable format
+ * Turn bytes into a human-readable format
+ *
  * @param $bytes
+ *
+ * @return string
  */
 function size_for_humans($bytes)
 {
@@ -35,8 +38,12 @@ function size_for_humans($bytes)
 
 function getOffsetWhereStringsAreEqual($a, $b)
 {
+    if ($a === null || $b === null) {
+        return max(strlen((string) $a), strlen((string) $b));
+    }
+
     $i = 0;
-    while (strlen($a) && strlen($b) && strlen($a) > $i && $a{$i} === $b{$i}) {
+    while (strlen($a) && strlen($b) && strlen($a) > $i && $a[$i] === $b[$i]) {
         $i++;
     }
 
@@ -47,13 +54,13 @@ function getSuggestionMessage($property, $value)
 {
     switch ($property) {
         case 'opcache_enabled':
-            return $value ? '' : '<span class="glyphicon glyphicon-search"></span> You should enabled opcache';
+            return $value ? '' : '<span class="glyphicon glyphicon-search"></span> You should enable opcache';
             break;
         case 'cache_full':
             return $value ? '<span class="glyphicon glyphicon-search"></span> You should increase opcache.memory_consumption' : '';
             break;
         case 'opcache.validate_timestamps':
-            return $value ? '<span class="glyphicon glyphicon-search"></span> If you are in a production environment you should disabled it' : '';
+            return $value ? '<span class="glyphicon glyphicon-search"></span> If you are in a production environment you should disable it' : '';
             break;
     }
 
@@ -93,16 +100,27 @@ function getStringFromPropertyAndValue($property, $value)
 <!DOCTYPE html>
 <html>
 <head>
-    <title>OPcache Dashboard - Carlos Buenosvinos (@buenosvinos)</title>
+    <title>OPcache Dashboard - MTS Internet GmbH</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" href="//www.php.net/favicon.ico">
     <link href="//netdna.bootstrapcdn.com/bootstrap/3.0.2/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/github-fork-ribbon-css/0.2.3/gh-fork-ribbon.min.css" />
     <style>
         body { padding-top: 70px; }
         h2 {
             padding-top: 100px;
             margin-top: -100px;
             display: inline-block; /* required for webkit browsers */
+        }
+        .github-fork-ribbon:before {
+            background-color: #090;
+        }
+        a {
+            color: #090;
+        }
+        a:hover {
+            color: #090;
+            text-decoration-style: dotted;
         }
     </style>
 
@@ -114,7 +132,7 @@ function getStringFromPropertyAndValue($property, $value)
     <![endif]-->
 </head>
 <body data-spy="scroll" data-target="#navbar-opcache">
-<a href="https://github.com/carlosbuenosvinos/opcache-dashboard"><img style="position: absolute; top: 50px; right: 0; border: 0;" src="https://s3.amazonaws.com/github/ribbons/forkme_right_gray_6d6d6d.png" alt="Fork me on GitHub"></a>
+<a class="github-fork-ribbon" href="https://github.com/mtsbs/opcache-dashboard" data-ribbon="Fork me on GitHub" title="Fork me on GitHub">Fork me on GitHub</a>
 <nav id="navbar-opcache" class="navbar navbar-default navbar-fixed-top" role="navigation">
     <div class="navbar-header">
         <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
@@ -141,7 +159,8 @@ function getStringFromPropertyAndValue($property, $value)
 <div class="container">
     <div class="jumbotron">
         <h1>OPcache Dashboard</h1>
-        <h2>by Carlos Buenosvinos (<a href="https://twitter.com/buenosvinos">@buenosvinos</a>)</h2>
+        <h2>by <a href="https://www.mts-internet.de">MTS Internet GmbH</a></h2>
+        <p>forked from: by Carlos Buenosvinos (<a href="https://twitter.com/buenosvinos">@buenosvinos</a>)</p>
         <p>PHP: <?= phpversion() ?> and OPcache: <?= $config['version']['version'] ?></p>
     </div>
 
@@ -249,15 +268,23 @@ function getStringFromPropertyAndValue($property, $value)
 
         $offset = null;
         $previousKey = null;
+
         foreach ($status['scripts'] as $key => $data) {
-            $offset = min(
-                getOffsetWhereStringsAreEqual(
-                    (null === $previousKey) ? $key : $previousKey,
-                    $key
-                ),
-                (null === $offset) ? strlen($key) : $offset
-            );
-            $previousKey = $key;
+            if (strpos($key, 'phar://') !== false) {
+                $status['scripts'][$key]['phar'] = true;
+                $status['scripts'][$key]['show_path'] = $key;
+            } else {
+                $status['scripts'][$key]['phar'] = false;
+            }
+
+            if ($status['scripts'][$key]['phar'] === false) {
+                $offset = min(
+                    getOffsetWhereStringsAreEqual($previousKey,$key),
+                    $offset ?? strlen($key)
+                );
+
+                $previousKey = $key;
+            }
         }
 
         foreach ($status['scripts'] as $key => $data) {
@@ -266,7 +293,11 @@ function getStringFromPropertyAndValue($property, $value)
                 <td><a href="?invalidate=<?= $data['full_path'] ?>">Invalidate</a></td>
                 <td><?= $data['hits'] ?></td>
                 <td><?= size_for_humans($data['memory_consumption']) ?></td>
-                <td><?= substr($data['full_path'], $offset - 1) ?></td>
+                <td><?= $data['phar'] === false ?
+                        count($status['scripts']) > 1 ?
+                            substr($data['full_path'], $offset -1) :
+                            $data['full_path'] :
+                        $data['show_path'] ?></td>
             </tr>
         <?php } ?>
     </table>
